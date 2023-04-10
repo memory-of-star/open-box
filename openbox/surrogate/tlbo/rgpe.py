@@ -24,13 +24,13 @@ class RGPE(BaseTLSurrogate):
             # Weights for base surrogates and the target surrogate.
             self.w = [1. / self.K] * self.K + [0.]
             # Preventing weight dilution.
-            self.ignored_flag = [False] * (self.K + 1)
+            self.ignored_flag = [False] * self.K
         self.hist_ws = list()
         self.iteration_id = 0
 
     def train(self, X: np.ndarray, y: np.array):
         # Build the target surrogate.
-        self.target_surrogate = self.build_single_surrogate(X, y, normalize_y=True)
+        self.target_surrogate = self.build_single_surrogate(X, y)
         if self.source_hpo_data is None:
             return
 
@@ -57,7 +57,7 @@ class RGPE(BaseTLSurrogate):
                     del row_indexs[i]
                     if (y[row_indexs] == y[row_indexs[0]]).all():
                         y[row_indexs[0]] += 1e-4
-                    model = self.build_single_surrogate(X[row_indexs, :], y[row_indexs], normalize_y=False)
+                    model = self.build_single_surrogate(X[row_indexs, :], y[row_indexs])
                     mu, var = model.predict(X)
                     cached_mu_list.append(mu)
                     cached_var_list.append(var)
@@ -73,7 +73,7 @@ class RGPE(BaseTLSurrogate):
                     if (y[row_indexs] == y[row_indexs[0]]).all():
                         y[row_indexs[0]] += 1e-4
 
-                    model = self.build_single_surrogate(X[row_indexs, :], y[row_indexs], normalize_y=False)
+                    model = self.build_single_surrogate(X[row_indexs, :], y[row_indexs])
                     mu, var = model.predict(X)
                     cached_mu_list.append(mu)
                     cached_var_list.append(var)
@@ -127,19 +127,18 @@ class RGPE(BaseTLSurrogate):
         for id in range(self.K):
             median = sorted(ranking_loss_caches[:, id])[int(self.num_sample * 0.5)]
             self.ignored_flag[id] = median > threshold
-        self.ignored_flag[-1] = self.only_source
-        if any(self.ignored_flag):
-            logger.info(f'weight ignore flag: {self.ignored_flag}')
+
+        if self.only_source:
+            self.w[-1] = 0.
+            if np.sum(self.w) == 0:
+                self.w = [1. / self.K] * self.K + [0.]
+            else:
+                self.w[:-1] = np.array(self.w[:-1]) / np.sum(self.w[:-1])
 
         w = self.w.copy()
         for id in range(self.K):
             if self.ignored_flag[id]:
                 w[id] = 0.
-        sum_w = np.sum(w)
-        if sum_w == 0:
-            w = [1. / self.K] * self.K + [0.] if self.only_source else [0.] * self.K + [1.]
-        else:
-            w = (np.array(w) / sum_w).tolist()
         weight_str = ','.join([('%.2f' % item) for item in w])
         # logger.info('In iter-%d' % self.iteration_id)
         self.target_weight.append(w[-1])

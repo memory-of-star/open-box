@@ -9,13 +9,12 @@ from openbox.core.sync_batch_advisor import SyncBatchAdvisor
 from openbox.core.async_batch_advisor import AsyncBatchAdvisor
 from openbox.optimizer.base import BOBase
 from openbox.core.message_queue.master_messager import MasterMessager
-from openbox.utils.history import History
+from openbox.utils.history import Observation, History
 from openbox.utils.util_funcs import deprecate_kwarg
 
 
 class mqSMBO(BOBase):
     @deprecate_kwarg('num_objs', 'num_objectives', 'a future version')
-    @deprecate_kwarg('time_limit_per_trial', 'max_runtime_per_trial', 'a future version')
     def __init__(
             self,
             objective_function,
@@ -26,8 +25,8 @@ class mqSMBO(BOBase):
             num_objectives=1,
             num_constraints=0,
             sample_strategy: str = 'bo',
-            max_runs=100,
-            max_runtime_per_trial=None,
+            max_runs=200,
+            time_limit_per_trial=180,
             surrogate_type='auto',
             acq_type='auto',
             acq_optimizer_type='auto',
@@ -54,7 +53,7 @@ class mqSMBO(BOBase):
         self.FAILED_PERF = [np.inf] * num_objectives
         super().__init__(objective_function, config_space, task_id=task_id, output_dir=logging_dir,
                          random_state=random_state, initial_runs=initial_runs, max_runs=max_runs,
-                         sample_strategy=sample_strategy, max_runtime_per_trial=max_runtime_per_trial,
+                         sample_strategy=sample_strategy, time_limit_per_trial=time_limit_per_trial,
                          transfer_learning_history=transfer_learning_history, logger_kwargs=logger_kwargs)
 
         self.parallel_strategy = parallel_strategy
@@ -110,12 +109,12 @@ class mqSMBO(BOBase):
     def async_run(self):
         config_num = 0
         result_num = 0
-        while result_num < self.max_runs:
+        while result_num < self.max_iterations:
             # Add jobs to masterQueue.
-            while len(self.config_advisor.running_configs) < self.batch_size and config_num < self.max_runs:
+            while len(self.config_advisor.running_configs) < self.batch_size and config_num < self.max_iterations:
                 config_num += 1
                 config = self.config_advisor.get_suggestion()
-                msg = [config, self.max_runtime_per_trial, self.FAILED_PERF]
+                msg = [config, self.time_limit_per_trial]
                 logger.info("Master: Add config %d." % config_num)
                 self.master_messager.send_message(msg)
 
@@ -129,17 +128,21 @@ class mqSMBO(BOBase):
                     break
                 # Report result.
                 result_num += 1
+                if observation.objectives is None:
+                    observation.objectives = self.FAILED_PERF.copy()
                 self.config_advisor.update_observation(observation)
                 logger.info('Master: Get %d observation: %s' % (result_num, str(observation)))
 
     def sync_run(self):
-        batch_id, config_count = 0, 0
-        while True:
-            batch_id += 1
+        batch_num = (self.max_iterations + self.batch_size - 1) // self.batch_size
+        if self.batch_size > self.config_advisor.init_num:
+            batch_num += 1  # fix bug
+        batch_id = 0
+        while batch_id < batch_num:
             configs = self.config_advisor.get_suggestions()
             # Add batch configs to masterQueue.
             for config in configs:
-                msg = [config, self.max_runtime_per_trial, self.FAILED_PERF]
+                msg = [config, self.time_limit_per_trial]
                 self.master_messager.send_message(msg)
             logger.info('Master: %d-th batch. %d configs sent.' % (batch_id, len(configs)))
             # Get batch results from workerQueue.
@@ -161,9 +164,7 @@ class mqSMBO(BOBase):
                                  % (batch_id, result_num, str(observation)))
                 if result_num == result_needed:
                     break
-            config_count += result_needed
-            if config_count >= self.max_runs:
-                break
+            batch_id += 1
 
     def run(self):
         if self.parallel_strategy == 'async':

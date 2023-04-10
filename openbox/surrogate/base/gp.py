@@ -92,7 +92,7 @@ class GaussianProcess(BaseGP):
 
         self._set_has_conditions()
 
-    def _train(self, X: np.ndarray, y: np.ndarray, do_optimize: bool = True) -> 'GaussianProcess':
+    def _train(self, X: np.ndarray, y: np.ndarray, do_optimize: bool = True) -> 'GaussianProcess':  # set this to false may reduce the time of trainning
         """
         Computes the Cholesky decomposition of the covariance of X and
         estimates the GP hyperparameters by optimizing the marginal

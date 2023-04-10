@@ -1,10 +1,10 @@
 # License: MIT
-# Author: Huaijun Jiang
-# Date: 2022-12-13
 
 import os
 import copy
 import json
+
+from tqdm import trange
 from datetime import datetime
 from functools import partial
 from typing import List, Tuple, Union, Optional
@@ -566,6 +566,25 @@ class History(object):
 
         incumbents = [self.observations[i] for i in np.where(incumbent_mask)[0]]
         return incumbents
+    
+    def mf_get_incumbents(self) -> List[Observation]:
+        if self.num_objectives > 1:
+            raise ValueError('get_incumbents() is used for single-objective optimization! Use get_pareto() instead.')
+
+        feasible_mask = self.get_feasible_mask(exclude_failed=True)
+        if not np.any(feasible_mask):
+            logger.warning('No feasible incumbent observations returned!')
+            return []
+
+        objectives = self.get_objectives(transform='none', warn_invalid_value=False)
+        # no invalid value in SUCCESS trials
+        incumbent_value = np.min(objectives[feasible_mask])  # num_objectives=1
+        incumbent_mask = (objectives == incumbent_value).reshape(-1) & feasible_mask
+
+        incumbents = [self.observations[i] for i in np.where(incumbent_mask)[0]]
+        return incumbents
+    
+    
 
     def get_incumbent_value(self) -> float:
         """
@@ -740,7 +759,7 @@ class History(object):
             objectives = self.get_objectives(transform='none', warn_invalid_value=False)
             HV = Hypervolume(ref_point=ref_point)
             hv_list = []
-            for i in range(len(self)):
+            for i in trange(len(self)):
                 mask = feasible_mask[:i + 1]
                 objs = objectives[:i + 1]
                 pareto_front = get_pareto_front(objs[mask], lexsort=False)
@@ -845,6 +864,7 @@ class History(object):
         if method == 'fanova':
             importance_func = partial(get_fanova_importance, config_space=config_space)
         elif method == 'shap':
+            # todo: try different hyperparameter in lgb
             importance_func = get_shap_importance
             if any([isinstance(hp, (CategoricalHyperparameter, OrdinalHyperparameter))
                     for hp in config_space.get_hyperparameters()]):
@@ -999,15 +1019,12 @@ class History(object):
         ax = plot_curve(x=x, y=y, xlabel=xlabel, ylabel=ylabel, ax=ax, **kwargs)
         return ax
 
-    def visualize_html(self, logging_dir='logs/', open_html=True, show_importance=False, verify_surrogate=False,
-                       task_info=None, optimizer=None, advisor=None, **kwargs):
+    def visualize_html(self, open_html=True, show_importance=False, verify_surrogate=False, optimizer= None, **kwargs):
         """
         Visualize the history using OpenBox's HTML visualization.
 
         Parameters
         ----------
-        logging_dir : str, default='logs/'
-            The directory to save the visualization.
         open_html: bool, default=True
             If True, the visualization will be opened in the browser automatically.
         show_importance: bool, default=False
@@ -1015,21 +1032,18 @@ class History(object):
             Note that additional packages are required to calculate the importance. (run `pip install shap lightgbm`)
         verify_surrogate: bool, default=False
             If True, the surrogate model will be verified and shown. This may take some time.
-        task_info : dict, optional
-            Task information for visualizer to use.
-        optimizer : Optimizer, optional
-            Optimizer to extract task_info from.
-        advisor : Advisor, optional
-            Advisor to extract task_info from.
+        optimizer: Optimizer
+            The optimizer is required to obtain related information.
         kwargs: dict
             Other keyword arguments passed to `build_visualizer` in `openbox.visualization`.
         """
         from openbox.visualization import build_visualizer, HTMLVisualizer
+        # todo: user-friendly interface
+        if optimizer is None:
+            raise ValueError('Please provide optimizer for html visualization.')
 
         option = 'advanced' if (show_importance or verify_surrogate) else 'basic'
-        visualizer = build_visualizer(
-            option=option, history=self, logging_dir=logging_dir,
-            task_info=task_info, optimizer=optimizer, advisor=advisor, **kwargs)  # type: HTMLVisualizer
+        visualizer = build_visualizer(option, optimizer=optimizer, **kwargs)  # type: HTMLVisualizer
         if visualizer.history is not self:
             visualizer.history = self
             visualizer.meta_data['task_id'] = self.task_id

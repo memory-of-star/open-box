@@ -10,6 +10,7 @@ from openbox.acquisition_function.acquisition import (
     PI,
     LCB,
     Uncertainty,
+    MFEI
 )
 
 from openbox.acquisition_function.multi_objective_acquisition import (
@@ -43,6 +44,7 @@ __all__ = [
     'PI',
     'LCB',
     'Uncertainty',
+    'MFEI',
 
     'EHVI',
     'EHVIC',

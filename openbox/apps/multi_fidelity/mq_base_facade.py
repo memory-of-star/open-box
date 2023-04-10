@@ -23,8 +23,8 @@ class mqBaseFacade(object):
                  method_name='default_method_name',
                  log_directory='logs',
                  data_directory='data',
-                 max_runtime_per_trial=None,
-                 max_runtime=None,
+                 time_limit_per_trial=600,
+                 runtime_limit=None,
                  max_queue_len=300,
                  ip='',
                  port=13579,
@@ -45,7 +45,7 @@ class mqBaseFacade(object):
         self.recorder = []
 
         self.global_start_time = time.time()
-        self.max_runtime = None
+        self.runtime_limit = None
         self._history = {"time_elapsed": [], "performance": [], "best_trial_id": [], "configuration": []}
         self.global_incumbent = 1e10
         self.global_incumbent_configuration = None
@@ -61,8 +61,8 @@ class mqBaseFacade(object):
         if self.method_name is None:
             raise ValueError('Method name must be specified! NOT NONE.')
 
-        self.max_runtime_per_trial = max_runtime_per_trial
-        self.max_runtime = max_runtime
+        self.time_limit_per_trial = time_limit_per_trial
+        self.runtime_limit = runtime_limit
 
         max_queue_len = max(300, max_queue_len)
         self.master_messager = MasterMessager(ip, port, authkey, max_queue_len, max_queue_len)
@@ -109,10 +109,17 @@ class mqBaseFacade(object):
             extra_conf_dict['need_lc'] = self.record_lc
             extra_conf_dict['method_name'] = self.method_name
             conf_list.append((config, extra_conf_dict))
+            
+        ##### debug
+        # print("conf_list:", conf_list)
+        #####
 
         # Add batch configs to masterQueue.
         for config, extra_conf in conf_list:
-            msg = [config, extra_conf, self.max_runtime_per_trial, n_iteration, self.global_trial_counter]
+            msg = [config, extra_conf, self.time_limit_per_trial, n_iteration, self.global_trial_counter]
+            ######## debug
+            # print("send msg:", msg)
+            ########
             self.master_messager.send_message(msg)
             self.global_trial_counter += 1
         logger.info('Master: %d configs sent.' % (len(conf_list)))
@@ -120,12 +127,21 @@ class mqBaseFacade(object):
         result_num = 0
         result_needed = len(conf_list)
         while True:
-            if self.max_runtime is not None and time.time() - self.global_start_time > self.max_runtime:
+            if self.runtime_limit is not None and time.time() - self.global_start_time > self.runtime_limit:
                 break
             observation = self.master_messager.receive_message()    # return_info, time_taken, trial_id, config
+            ##### debug
+            # print("receive msg:", observation)
+            ######
             if observation is None:
                 # Wait for workers.
                 # logger.info("Master: wait for worker results. sleep 1s.")
+                ####### debug
+                print("result needed: ", result_needed)
+                print("result_num: ", result_num)
+                #######
+                if result_num == result_needed:
+                    break
                 time.sleep(1)
                 continue
             # Report result.
@@ -133,11 +149,21 @@ class mqBaseFacade(object):
             global_time = time.time() - self.global_start_time
             self.trial_statistics.append((observation, global_time))
             logger.info('Master: Get the [%d] result, observation is %s.' % (result_num, str(observation)))
+            ####### debug
+            # print("result needed:", result_needed)
+            #######
             if result_num == result_needed:
+                ####### debug
+                # print("####################### break out #############################")
+                #######
                 break
 
         # sort by trial_id. FIX BUG
         self.trial_statistics.sort(key=lambda x: x[0][2])
+        
+        ####### debug
+        # print("####################### point 1 #############################")
+        #######
 
         # get the evaluation statistics
         for observation, global_time in self.trial_statistics:
@@ -156,12 +182,25 @@ class mqBaseFacade(object):
             self.recorder.append({'trial_id': trial_id, 'time_consumed': time_taken,
                                   'configuration': config, 'n_iteration': n_iteration,
                                   'return_info': return_info, 'global_time': global_time})
+            
+        ####### debug
+        # print("####################### point 2 #############################")
+        #######
 
         self.trial_statistics.clear()
 
         self.save_intemediate_statistics()
-        if self.max_runtime is not None and time.time() - self.global_start_time > self.max_runtime:
+        if self.runtime_limit is not None and time.time() - self.global_start_time > self.runtime_limit:
             raise ValueError('Runtime budget meets!')
+        
+        ####### debug
+        # print("####################### point 3 #############################")
+        # print("performance_result: ", performance_result)
+        # print("early_stops: ", early_stops)
+        #######
+        
+        
+        
         return performance_result, early_stops
 
     def save_intemediate_statistics(self, save_stage=False):

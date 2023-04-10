@@ -1,3 +1,4 @@
+
 # License: MIT
 
 import os
@@ -14,7 +15,7 @@ from openbox.utils.multi_objective import get_chebyshev_scalarization, Nondomina
 from openbox.core.base import build_acq_func, build_optimizer, build_surrogate
 
 
-class Advisor(object, metaclass=abc.ABCMeta):
+class MultiFidelityAdvisor(object, metaclass=abc.ABCMeta):
     """
     Basic Advisor Class, which adopts a policy to sample a configuration.
     """
@@ -32,8 +33,8 @@ class Advisor(object, metaclass=abc.ABCMeta):
             rand_prob=0.1,
             optimization_strategy='bo',
             surrogate_type='auto',
-            acq_type='auto',
-            acq_optimizer_type='auto',
+            acq_type='mfei',
+            acq_optimizer_type='true_random',
             ref_point=None,
             output_dir='logs',
             task_id='OpenBox',
@@ -75,6 +76,14 @@ class Advisor(object, metaclass=abc.ABCMeta):
             task_id=task_id, num_objectives=num_objectives, num_constraints=num_constraints, config_space=config_space,
             ref_point=ref_point, meta_info=None,  # todo: add meta info
         )
+
+        self.fidelity_history = [None]
+        for i in range(2):
+            self.fidelity_history.append(History(
+            task_id=task_id, num_objectives=num_objectives, num_constraints=num_constraints, config_space=config_space,
+            ref_point=ref_point, meta_info=None,  # todo: add meta info
+        ))
+
 
         # initial design
         if initial_configurations is not None and len(initial_configurations) > 0:
@@ -339,7 +348,44 @@ class Advisor(object, metaclass=abc.ABCMeta):
 
         return initial_configs
 
-    def get_suggestion(self, history: History = None, return_list: bool = False):
+    def update_observation(self, observation: Observation):
+        """
+        Update the current observations.
+        Parameters
+        ----------
+        observation
+
+        Returns
+        -------
+
+        """
+        config = observation.config
+        config_dic = dict(config)
+        self.fidelity_history[config_dic['fidelity']].update_observation(observation)
+        return self.history.update_observation(observation)
+
+    def get_history(self):
+        return self.history
+
+    def save_json(self, filename: str = None):
+        """
+        Save history to a json file.
+        """
+        if filename is None:
+            filename = os.path.join(self.output_dir, f'history/{self.task_id}/history_{self.timestamp}.json')
+        self.history.save_json(filename)
+
+    def load_json(self, filename: str):
+        """
+        Load history from a json file.
+        """
+        self.history = History.load_json(filename, self.config_space)
+
+    def get_suggestions(self):
+        raise NotImplementedError
+
+
+    def get_suggestion(self, history: History = None, return_list: bool = False, fidelity_strategy=-1):
         """
         Generate a configuration (suggestion) for this query.
         Returns
@@ -358,12 +404,12 @@ class Advisor(object, metaclass=abc.ABCMeta):
             res = self.initial_configurations[num_config_evaluated]
             return [res] if return_list else res
         if self.optimization_strategy == 'random':
-            res = self.sample_random_configs(1, history)[0]
+            res = self.sample_random_configs(1, history, fidelity_strategy=fidelity_strategy)[0]
             return [res] if return_list else res
 
         if (not return_list) and self.rng.random() < self.rand_prob:
             logger.info('Sample random config. rand_prob=%f.' % self.rand_prob)
-            res = self.sample_random_configs(1, history)[0]
+            res = self.sample_random_configs(1, history, fidelity_strategy=fidelity_strategy)[0]
             return [res] if return_list else res
 
         X = history.get_config_array(transform='scale')
@@ -373,12 +419,12 @@ class Advisor(object, metaclass=abc.ABCMeta):
         if self.optimization_strategy == 'bo':
             if num_config_successful < max(self.init_num, 1):
                 logger.warning('No enough successful initial trials! Sample random configuration.')
-                res = self.sample_random_configs(1, history)[0]
+                res = self.sample_random_configs(1, history, fidelity_strategy=fidelity_strategy)[0]  # initialize with the highest fidelity
                 return [res] if return_list else res
 
             # train surrogate model
             if self.num_objectives == 1:
-                self.surrogate_model.train(X, Y[:, 0])
+                self.surrogate_model.train(X, Y[:, 0])                ##### this step may take a long time
             elif self.acq_type == 'parego':
                 weights = self.rng.random_sample(self.num_objectives)
                 weights = weights / np.sum(weights)
@@ -394,8 +440,20 @@ class Advisor(object, metaclass=abc.ABCMeta):
 
             # update acquisition function
             if self.num_objectives == 1:
-                incumbent_value = history.get_incumbent_value()
-                self.acquisition_function.update(model=self.surrogate_model,
+                if fidelity_strategy == -1:
+                    incumbent_value = history.get_incumbent_value()
+                    incumbent_value1 = self.fidelity_history[1].get_incumbent_value()
+                    incumbent_value2 = self.fidelity_history[2].get_incumbent_value()
+
+                    self.acquisition_function.update(model=self.surrogate_model,
+                                                 constraint_models=self.constraint_models,
+                                                 eta=incumbent_value,
+                                                 eta1=incumbent_value1,
+                                                 eta2=incumbent_value2,
+                                                 num_data=num_config_evaluated)
+                else:
+                    incumbent_value = self.fidelity_history[fidelity_strategy].get_incumbent_value()
+                    self.acquisition_function.update(model=self.surrogate_model,
                                                  constraint_models=self.constraint_models,
                                                  eta=incumbent_value,
                                                  num_data=num_config_evaluated)
@@ -423,34 +481,27 @@ class Advisor(object, metaclass=abc.ABCMeta):
 
             # optimize acquisition function
             challengers = self.optimizer.maximize(runhistory=history,
-                                                  num_points=50000)
+                                                  num_points=50000, fidelity=fidelity_strategy)   ##### this step may take a long time
             if return_list:
                 # Caution: return_list doesn't contain random configs sampled according to rand_prob
                 return challengers.challengers
 
             for config in challengers.challengers:
                 if config not in history.configurations:
+                    if self.optimizer.prev_fidelity == config['fidelity']:
+                        self.optimizer.fidelity_length += 1
+                    else:
+                        self.optimizer.prev_fidelity = config['fidelity']
+                        self.optimizer.fidelity_length = 0
                     return config
             logger.warning('Cannot get non duplicate configuration from BO candidates (len=%d). '
                                 'Sample random config.' % (len(challengers.challengers), ))
-            return self.sample_random_configs(1, history)[0]
+            return self.sample_random_configs(1, history, fidelity_strategy=fidelity_strategy)[0]
         else:
             raise ValueError('Unknown optimization strategy: %s.' % self.optimization_strategy)
-
-    def update_observation(self, observation: Observation):
-        """
-        Update the current observations.
-        Parameters
-        ----------
-        observation
-
-        Returns
-        -------
-
-        """
-        return self.history.update_observation(observation)
-
-    def sample_random_configs(self, num_configs=1, history=None, excluded_configs=None):
+        
+    
+    def sample_random_configs(self, num_configs=1, history=None, excluded_configs=None, fidelity_strategy=-1):
         """
         Sample a batch of random configurations.
         Parameters
@@ -472,7 +523,7 @@ class Advisor(object, metaclass=abc.ABCMeta):
         sample_cnt = 0
         max_sample_cnt = 1000
         while len(configs) < num_configs:
-            config = self.config_space.sample_configuration()
+            config = self.config_space.sample_configuration(strategy=fidelity_strategy)
             sample_cnt += 1
             if config not in (history.configurations + configs) and config not in excluded_configs:
                 configs.append(config)
@@ -483,28 +534,3 @@ class Advisor(object, metaclass=abc.ABCMeta):
                 configs.append(config)
                 sample_cnt = 0
         return configs
-
-    def get_history(self):
-        return self.history
-
-    def save_json(self, filename: str = None):
-        """
-        Save history to a json file.
-        """
-        if filename is None:
-            filename = os.path.join(self.output_dir, f'history/{self.task_id}/history_{self.timestamp}.json')
-        self.history.save_json(filename)
-
-    def load_json(self, filename: str):
-        """
-        Load history from a json file.
-        """
-        self.history = History.load_json(filename, self.config_space)
-
-    def get_suggestions(self):
-        raise NotImplementedError
-
-
-
-
-

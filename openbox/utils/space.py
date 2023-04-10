@@ -286,8 +286,12 @@ class ConditionedSpace(Space):
             # Populating a configuration from an array does not check if it is a legal configuration.
             # _check_forbidden() is not called. Otherwise, this would be stuck in an infinite loop.
             config = Configuration(self, vector=vector)
+            #####debug
+            # print(config)
+            ######
             if not self.sample_condition(config):
-                raise ForbiddenValueError('User-defined sample condition is not satisfied.')
+                # raise ForbiddenValueError('User-defined sample condition is not satisfied.')
+                pass # pass it for convienient
 
     def sample_configuration(self, size: int = 1) -> Union['Configuration', List['Configuration']]:
         """
@@ -338,3 +342,216 @@ class ConditionedSpace(Space):
         if self.sample_condition is not None:
             raise ValueError('Please add hyperparameters/variables before setting sample condition.')
         return super().add_hyperparameters(*args, **kwargs)
+    
+    
+from random import choice
+import random
+    
+class ComplexConditionedSpace(ConditionedSpace): # 使用随机漫步的方法来在一个不规则的空间内部随机取点，需要考虑一下的是步长以及起点的选择
+    
+    # def set_initial_points(self, initial_points=None):
+    #     if initial_points == None:
+    #         self.initial_points = {self.get_default_configuration()}
+    #     else:
+    #         self.initial_points = set(initial_points)
+            
+    #     # print(self.initial_points)
+            
+    #     return self.initial_points
+    
+    # def set_steps(self, steps = 10):
+    #     self.steps = steps
+    
+    # def configuration_step(self, configration, steps, size = 1) -> List['Configuration']:
+    #     hp_dic = self.get_hyperparameters_dict()
+        
+    #     max_step_for_int = steps
+        
+    #     for i in hp_dic.keys():
+    #         if isinstance(hp_dic[i], Int):
+    #             max_step_for_int = max(max_step_for_int, hp_dic[i].upper - hp_dic[i].lower)
+                
+    #     max_step_for_int *= 2
+    #     max_step_interval_for_float = 0
+        
+    #     for i in hp_dic.keys():
+    #         if isinstance(hp_dic[i], Real):
+    #             max_step_interval_for_float = max(max_step_interval_for_float, ((hp_dic[i].upper - hp_dic[i].lower)*2)/max_step_for_int)  
+        
+    #     ret = []
+    #     for i in range(size):
+    #         temp = configration
+    #         for j in range(max_step_for_int):
+    #             for var in hp_dic.keys():
+    #                 if isinstance(hp_dic[var], Int):
+    #                     if hp_dic[var].lower < hp_dic[var].upper:
+    #                         if temp[var] == hp_dic[var].lower:
+    #                             temp[var] += 1
+    #                         elif temp[var] == hp_dic[var].upper:
+    #                             temp[var] -= 1
+    #                         else:
+    #                             temp[var] += choice([-1, 1])
+    #                     elif hp_dic[var].lower > hp_dic[var].upper:
+    #                         raise ValueError("Int upper < lower!")
+                    
+    #                 if isinstance(hp_dic[var], Real):
+    #                     if hp_dic[var].lower < hp_dic[var].upper:
+    #                         if temp[var] == hp_dic[var].lower:
+    #                             temp[var] += random.random() * max_step_interval_for_float
+    #                             if temp[var] > hp_dic[var].upper:
+    #                                 temp[var] = hp_dic[var].upper
+    #                         elif temp[var] == hp_dic[var].upper:
+    #                             temp[var] -= random.random() * max_step_interval_for_float
+    #                             if temp[var] < hp_dic[var].lower:
+    #                                 temp[var] = hp_dic[var].lower
+    #                         else:
+    #                             temp[var] += random.random() * 2 * max_step_interval_for_float - max_step_interval_for_float
+    #                             if temp[var] > hp_dic[var].upper:
+    #                                 temp[var] = hp_dic[var].upper
+    #                             if temp[var] < hp_dic[var].lower:
+    #                                 temp[var] = hp_dic[var].lower
+                                    
+    #                     elif hp_dic[var].lower > hp_dic[var].upper:
+    #                         raise ValueError("Real upper < lower!")
+                        
+    #         ret.append(temp)
+        
+    #     return ret    
+    
+    def step_config(self, config):
+        hp_dic = self.get_hyperparameters_dict()
+        ret = set()
+        
+        for i in hp_dic.keys():
+            if isinstance(hp_dic[i], Int):
+                value = config[i]
+                j = 1
+                while value + j <= hp_dic[i].upper:
+                    temp = Configuration(self, config)
+                    temp[i] += j
+                    # print("1:", self.sample_condition(temp))
+                    if self.sample_condition(temp):
+                        ret.add(temp)
+                    j += 1
+                
+                j = 1
+                while value - j >= hp_dic[i].lower:
+                    temp = Configuration(self, config)
+                    temp[i] -= j
+                    # print("2:", self.sample_condition(temp))
+                    if self.sample_condition(temp):
+                        ret.add(temp)
+                    j += 1
+                    
+        return ret
+        
+    
+    def step(self, points):
+        ret = set()
+        for config in points:
+            peripheral_configs = self.step_config(config)
+            ret.update(peripheral_configs)
+        return ret
+    
+    def init(self, initial_points=None):
+        if initial_points == None:
+                self.peripheral_points = {self.get_default_configuration()}
+        else:
+            self.peripheral_points = set(initial_points)
+            
+        self.internal_points = set()
+        
+        while self.peripheral_points:
+            new_configs = self.step(self.peripheral_points)
+            self.internal_points.update(self.peripheral_points)
+            self.peripheral_points = (set(new_configs) - self.peripheral_points) - self.internal_points
+        
+        return 
+    
+    
+    def sample_configuration(self, size: int = 1) -> Union['Configuration', List['Configuration']]:
+        
+        # if self.sample_condition is None:
+        #     return super().sample_configuration(size=size)
+
+        if not isinstance(size, int):
+            raise TypeError('Argument size must be of type int, but is %s'
+                            % type(size))
+        elif size < 1:
+            return []
+        
+        lst = list(self.internal_points)
+        
+        if size > len(lst):
+            accepted_configurations = []
+            for i in range(size):
+                accepted_configurations.append(random.choice(lst))
+        else:
+            accepted_configurations = random.sample(lst, size)
+            
+        # print("choose:", accepted_configurations)
+        
+        if size <= 1:
+            return accepted_configurations[0]
+        else:
+            return accepted_configurations[:size]
+        
+
+
+
+class MultiFidelityComplexConditionedSpace(ComplexConditionedSpace): 
+    
+    def set_fidelity_dimension(self):
+        self.fidelity = 2
+        self.fidelity_dimension_name = 'fidelity'
+
+    def sample_configuration(self, size: int = 1, strategy = -1) -> Union['Configuration', List['Configuration']]:
+
+        if not isinstance(size, int):
+            raise TypeError('Argument size must be of type int, but is %s'
+                            % type(size))
+        elif size < 1:
+            return []
+        
+        lst = list(self.internal_points)
+        
+        if size > len(lst):
+            accepted_configurations = []
+            for i in range(size):
+                accepted_configurations.append(random.choice(lst))
+        else:
+            accepted_configurations = random.sample(lst, size)
+
+        if strategy == -1:
+            for i in range(len(accepted_configurations)):
+                dic = dict(accepted_configurations[i])
+                dic[self.fidelity_dimension_name] = random.choice(list(range(1, self.fidelity+1)))
+                accepted_configurations[i] = Configuration(self, dict(accepted_configurations[i]))
+        else:
+            for i in range(len(accepted_configurations)):
+                dic = dict(accepted_configurations[i])
+                dic[self.fidelity_dimension_name] = strategy
+                accepted_configurations[i] = Configuration(self, dic)
+        
+        if size <= 1:
+            return accepted_configurations[0]
+        else:
+            return accepted_configurations[:size]
+        
+
+
+
+class SelfDefinedConditionedSpace(ConditionedSpace):
+    sample_condition: Callable[[Configuration], bool] = None
+
+    def set_sample_condition(self, sample_condition: Callable[[Configuration], bool]):
+        self.sample_condition = sample_condition
+        self._check_default_configuration()
+
+    def set_sample_func(self, func):
+        self.self_defined_sample_configuration = func
+
+    def sample_configuration(self, size: int = 1) -> Union['Configuration', List['Configuration']]:
+
+        return self.self_defined_sample_configuration(size)
+

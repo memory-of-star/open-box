@@ -8,6 +8,7 @@ from openbox.utils.util_funcs import get_types
 
 acq_dict = {
     'ei': EI,
+    'mfei': MFEI,
     'eips': EIPS,
     'logei': LogEI,
     'pi': PI,
@@ -48,6 +49,9 @@ def build_optimizer(func_str='local_random', acq_func=None, config_space=None, r
     if func_str == 'local_random':
         from openbox.acq_maximizer.ei_optimization import InterleavedLocalAndRandomSearch
         optimizer = InterleavedLocalAndRandomSearch
+    elif func_str == 'true_random':
+        from openbox.acq_maximizer.ei_optimization import RandomSearch
+        optimizer = RandomSearch
     elif func_str == 'random_scipy':
         from openbox.acq_maximizer.ei_optimization import RandomScipyOptimizer
         optimizer = RandomScipyOptimizer

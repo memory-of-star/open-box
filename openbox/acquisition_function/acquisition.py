@@ -117,7 +117,7 @@ class EI(AbstractAcquisitionFunction):
 
     def __init__(self,
                  model: AbstractModel,
-                 par: float = 0.0,
+                 par: float = 1.0,
                  **kwargs):
         """Constructor
 
@@ -182,6 +182,105 @@ class EI(AbstractAcquisitionFunction):
             raise ValueError(
                 "Expected Improvement is smaller than 0 for at least one "
                 "sample.")
+
+        return f
+    
+
+class MFEI(EI):
+    r"""Computes for a given x the expected constrained improvement as
+    acquisition value.
+
+    :math:`\text{EIC}(X) := \text{EI}(X)\prod_{k=1}^K\text{Pr}(c_k(x) \leq 0 | \mathcal{D}_t)`,
+    with :math:`c_k \leq 0,\ 1 \leq k \leq K` the constraints, :math:`\mathcal{D}_t` the previous observations.
+    """
+
+    def __init__(self,
+                 model: AbstractModel,
+                 par: float = 0.0,
+                 **kwargs):
+        """Constructor
+
+        Parameters
+        ----------
+        model : AbstractEPM
+            A surrogate that implements at least
+                 - predict_marginalized_over_instances(X)
+        par : float, default=0.0
+            Controls the balance between exploration and exploitation of the
+            acquisition function.
+        """
+
+        super(EI, self).__init__(model)
+        self.long_name = 'Multi Fidelity Expected Improvement'
+        self.par = par
+        self.eta1 = None
+        self.eta2 = None
+
+
+    def _compute(self, X: np.ndarray, **kwargs):
+        """Computes the EIC value and its derivatives.
+
+        Parameters
+        ----------
+        X: np.ndarray(N, D), The input points where the acquisition function
+            should be evaluated. The dimensionality of X is (N, D), with N as
+            the number of points to evaluate at and D is the number of
+            dimensions of one X.
+
+        Returns
+        -------
+        np.ndarray(N, 1)
+            Expected Constrained Improvement of X
+        """
+        # f = super()._compute(X)
+        if len(X.shape) == 1:
+            X = X[:, np.newaxis]
+
+        m, v = self.model.predict_marginalized_over_instances(X)
+        s = np.sqrt(v)
+
+        if self.eta1 is None or self.eta2 is None:
+            raise ValueError('No current best specified. Call update('
+                             'eta=<int>) to inform the acquisition function '
+                             'about the current best value.')
+        
+        eta = np.zeros(s.shape)
+        eta[(X[:, 0] - 0.25)**2 < 0.01] = self.eta1
+        eta[(X[:, 0] - 0.75)**2 < 0.01] = self.eta2
+
+        def calculate_f():
+            z = (eta - m - self.par) / s
+            return (eta - m - self.par) * norm.cdf(z) + s * norm.pdf(z)
+
+        if np.any(s == 0.0):
+            # if std is zero, we have observed x on all instances
+            # using a RF, std should be never exactly 0.0
+            # Avoid zero division by setting all zeros in s to one.
+            # Consider the corresponding results in f to be zero.
+            logger.warning("Predicted std is 0.0 for at least one sample.")
+            s_copy = np.copy(s)
+            s[s_copy == 0.0] = 1.0
+            f = calculate_f()
+            f[s_copy == 0.0] = 0.0
+        else:
+            f = calculate_f()
+        if (f < 0).any():
+            raise ValueError(
+                "Expected Improvement is smaller than 0 for at least one "
+                "sample.")
+        
+
+        cost1 = 100
+        cost2 = 1
+
+        f[(X[:, 0] - 0.25)**2 < 0.01] = f[(X[:, 0] - 0.25)**2 < 0.01] / cost1
+        f[(X[:, 0] - 0.75)**2 < 0.01] = f[(X[:, 0] - 0.75)**2 < 0.01] / cost2
+
+        if 'prev_fidelity' in kwargs.keys() and 'fidelity_length' in kwargs.keys():
+            if kwargs['prev_fidelity'] == 1:
+                f[(X[:, 0] - 0.25)**2 < 0.01] = f[(X[:, 0] - 0.25)**2 < 0.01] * (0.01**kwargs['fidelity_length'])
+            elif kwargs['prev_fidelity'] == 2:
+                f[(X[:, 0] - 0.75)**2 < 0.01] = f[(X[:, 0] - 0.75)**2 < 0.01] * (0.01**kwargs['fidelity_length'])
 
         return f
 

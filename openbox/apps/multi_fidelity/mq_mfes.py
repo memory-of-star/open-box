@@ -31,7 +31,7 @@ class mqMFES(mqBaseFacade):
                  config_space: ConfigurationSpace,
                  R,
                  eta=3,
-                 num_iter=10000,
+                 num_iter=20,
                  rand_prob=0.3,
                  init_weight=None, update_enable=True,
                  weight_method='rank_loss_p_norm', fusion_method='idp',
@@ -39,15 +39,15 @@ class mqMFES(mqBaseFacade):
                  random_state=1,
                  method_id='mqMFES',
                  restart_needed=True,
-                 max_runtime_per_trial=None,
-                 max_runtime=None,
+                 time_limit_per_trial=600,
+                 runtime_limit=None,
                  ip='',
                  port=13579,
                  authkey=b'abc',):
         max_queue_len = 3 * R  # conservative design
         super().__init__(objective_func, method_name=method_id,
-                         restart_needed=restart_needed, max_runtime_per_trial=max_runtime_per_trial,
-                         max_runtime=max_runtime,
+                         restart_needed=restart_needed, time_limit_per_trial=time_limit_per_trial,
+                         runtime_limit=runtime_limit,
                          max_queue_len=max_queue_len, ip=ip, port=port, authkey=authkey)
         self.seed = random_state
         self.config_space = config_space
@@ -128,6 +128,12 @@ class mqMFES(mqBaseFacade):
             n = int(ceil(self.B / self.R / (s + 1) * self.eta ** s))
             # initial number of iterations per config
             r = int(self.R * self.eta ** (-s))
+            
+            ######## debug
+            # print("self.R: ", self.R)
+            # print("self.eta: ", self.eta)
+            # print("s: ", s)
+            ########
 
             # Choose a batch of configurations in different mechanisms.
             start_time = time.time()
@@ -145,6 +151,14 @@ class mqMFES(mqBaseFacade):
 
                 n_configs = n * self.eta ** (-i)
                 n_iteration = r * self.eta ** (i)
+                
+                ########## debug
+                # print("r: ", r)
+                # print("self.eta: ", self.eta)
+                # print("i: ", i)
+                # print("s: ", s)
+                # print("skip_last: ", skip_last)
+                ##########
 
                 n_iter = n_iteration
                 if last_run_num is not None and not self.restart_needed:
@@ -155,11 +169,28 @@ class mqMFES(mqBaseFacade):
                                  (self.method_name, int(n_configs), int(n_iteration)))
 
                 ret_val, early_stops = self.run_in_parallel(T, n_iter, extra_info)
+                ########## debug
+                # print("################# run_in_parallel finished")
+                ##########
                 val_losses = [item['loss'] for item in ret_val]
                 ref_list = [item['ref_id'] for item in ret_val]
+                
+                ########## debug
+                # print("################# point 1")
+                # print("target_x: ", list(self.target_x.keys()))
+                # print("target_y: ",list(self.target_y.keys()))
+                # print("n_iteration: ", n_iteration)
+                # print("T: ", T)
+                # print("val_losses: ", val_losses)
+                ##########
+                
 
                 self.target_x[int(n_iteration)].extend(T)
                 self.target_y[int(n_iteration)].extend(val_losses)
+                
+                ########## debug
+                # print("################# point 2")
+                ##########
 
                 if int(n_iteration) == self.R:
                     self.incumbent_configs.extend(T)
@@ -188,7 +219,10 @@ class mqMFES(mqBaseFacade):
                 incumbent_loss = val_losses[0]
                 self.add_stage_history(self.stage_id, min(self.global_incumbent, incumbent_loss))
                 self.stage_id += 1
+                
             # self.remove_immediate_model()
+
+                
 
             for item in self.iterate_r[self.iterate_r.index(r):]:
                 # NORMALIZE Objective value: normalization
@@ -203,6 +237,9 @@ class mqMFES(mqBaseFacade):
                 logger.info("%s algorithm: %d/%d iteration starts" % (self.method_name, iter, self.num_iter))
                 start_time = time.time()
                 self.iterate(skip_last=skip_last)
+                ######## debug
+                # print("##########################################iterate finished")
+                ########
                 time_elapsed = (time.time() - start_time) / 60
                 logger.info("%d/%d-Iteration took %.2f min." % (iter, self.num_iter, time_elapsed))
                 self.iterate_id += 1

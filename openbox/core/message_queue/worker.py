@@ -1,8 +1,10 @@
 # License: MIT
 
 import time
+import sys
+import traceback
 from openbox.utils.constants import SUCCESS, FAILED, TIMEOUT
-from openbox.utils.limit import run_obj_func
+from openbox.utils.limit import time_limit, TimeoutException
 from openbox.utils.util_funcs import parse_result
 from openbox.core.message_queue.worker_messager import WorkerMessager
 from openbox.utils.history import Observation
@@ -26,28 +28,32 @@ class Worker(object):
                 time.sleep(1)
                 continue
             print("Worker: get config. start working.")
-            config, timeout, FAILED_PERF = msg
+            config, time_limit_per_trial = msg
 
             # Start working
-            # evaluate configuration on objective_function
-            obj_args, obj_kwargs = (config,), dict()
-            result = run_obj_func(self.objective_function, obj_args, obj_kwargs, timeout)
+            trial_state = SUCCESS
+            start_time = time.time()
+            try:
+                args, kwargs = (config,), dict()
+                timeout_status, _result = time_limit(self.objective_function,
+                                                     time_limit_per_trial,
+                                                     args=args, kwargs=kwargs)
+                if timeout_status:
+                    raise TimeoutException(
+                        'Timeout: time limit for this evaluation is %.1fs' % time_limit_per_trial)
+                else:
+                    objectives, constraints, extra_info = parse_result(_result)
+            except Exception as e:
+                if isinstance(e, TimeoutException):
+                    trial_state = TIMEOUT
+                else:
+                    traceback.print_exc(file=sys.stdout)
+                    trial_state = FAILED
+                objectives = None
+                constraints = None
+                extra_info = None
 
-            # parse result
-            ret, timeout_status, traceback_msg, elapsed_time = (
-                result['result'], result['timeout'], result['traceback'], result['elapsed_time'])
-            if timeout_status:
-                trial_state = TIMEOUT
-            elif traceback_msg is not None:
-                trial_state = FAILED
-                print(f'Exception raised in objective function:\n{traceback_msg}\nconfig: {config}')
-            else:
-                trial_state = SUCCESS
-            if trial_state == SUCCESS:
-                objectives, constraints, extra_info = parse_result(ret)
-            else:
-                objectives, constraints, extra_info = FAILED_PERF.copy(), None, None
-
+            elapsed_time = time.time() - start_time
             observation = Observation(
                 config=config, objectives=objectives, constraints=constraints,
                 trial_state=trial_state, elapsed_time=elapsed_time, extra_info=extra_info,

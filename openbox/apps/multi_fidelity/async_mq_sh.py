@@ -21,15 +21,15 @@ class async_mqSuccessiveHalving(async_mqBaseFacade):
                  random_state=1,
                  method_id='mqASHA',
                  restart_needed=True,
-                 max_runtime_per_trial=None,
-                 max_runtime=None,
+                 time_limit_per_trial=600,
+                 runtime_limit=None,
                  ip='',
                  port=13579,
                  authkey=b'abc',):
         max_queue_len = 3 * R   # conservative design
         super().__init__(objective_func, method_name=method_id,
-                         restart_needed=restart_needed, max_runtime_per_trial=max_runtime_per_trial,
-                         max_runtime=max_runtime,
+                         restart_needed=restart_needed, time_limit_per_trial=time_limit_per_trial,
+                         runtime_limit=runtime_limit,
                          max_queue_len=max_queue_len, ip=ip, port=port, authkey=authkey)
         self.seed = random_state
         self.config_space = config_space

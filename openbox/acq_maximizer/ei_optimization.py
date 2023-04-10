@@ -21,6 +21,7 @@ from openbox.acq_maximizer.random_configuration_chooser import ChooserNoCoolDown
 from openbox.utils.history import History, MultiStartHistory
 from openbox.utils.util_funcs import get_types
 from openbox.utils.constants import MAXINT
+from openbox import sp
 
 
 class AcquisitionFunctionMaximizer(object, metaclass=abc.ABCMeta):
@@ -46,6 +47,8 @@ class AcquisitionFunctionMaximizer(object, metaclass=abc.ABCMeta):
     ):
         self.acquisition_function = acquisition_function
         self.config_space = config_space
+        self.fidelity_length = 0
+        self.prev_fidelity = 1
 
         if rng is None:
             logger.debug('no rng given, using default seed of 1')
@@ -57,6 +60,7 @@ class AcquisitionFunctionMaximizer(object, metaclass=abc.ABCMeta):
             self,
             runhistory: History,
             num_points: int,
+            fidelity = -1,
             **kwargs
     ) -> Iterable[Configuration]:
         """Maximize acquisition function using ``_maximize``.
@@ -74,7 +78,12 @@ class AcquisitionFunctionMaximizer(object, metaclass=abc.ABCMeta):
         iterable
             An iterable consisting of :class:`openbox.config_space.Configuration`.
         """
-        return [t[1] for t in self._maximize(runhistory, num_points, **kwargs)]
+        next_configs_by_acq_value = [t[1] for t in self._maximize(runhistory, num_points, fidelity=fidelity, **kwargs)]
+    
+        challengers = ChallengerList(next_configs_by_acq_value,
+                                     self.config_space,
+                                     )
+        return challengers
 
     @abc.abstractmethod
     def _maximize(
@@ -107,7 +116,8 @@ class AcquisitionFunctionMaximizer(object, metaclass=abc.ABCMeta):
 
     def _sort_configs_by_acq_value(
             self,
-            configs: List[Configuration]
+            configs: List[Configuration],
+            fidelity_strategy=-1
     ) -> List[Tuple[float, Configuration]]:
         """Sort the given configurations by acquisition value
 
@@ -121,7 +131,10 @@ class AcquisitionFunctionMaximizer(object, metaclass=abc.ABCMeta):
                 ordered by their acquisition function value
         """
 
-        acq_values = self.acquisition_function(configs)
+        if self.fidelity_length > 0:
+            acq_values = self.acquisition_function(configs, fidelity=fidelity_strategy, fidelity_length=self.fidelity_length, prev_fidelity=self.prev_fidelity)
+        else:
+            acq_values = self.acquisition_function(configs, fidelity=fidelity_strategy) #acquisition function本来就有kwargs, 所以这里是通用的改法
 
         # From here
         # http://stackoverflow.com/questions/20197990/how-to-make-argsort-result-to-be-random-between-equal-values
@@ -380,7 +393,8 @@ class RandomSearch(AcquisitionFunctionMaximizer):
             self,
             runhistory: History,
             num_points: int,
-            _sorted: bool = False,
+            _sorted: bool = True,
+            fidelity=-1,
             **kwargs
     ) -> List[Tuple[float, Configuration]]:
         """Randomly sampled configurations
@@ -404,6 +418,36 @@ class RandomSearch(AcquisitionFunctionMaximizer):
         """
 
         if num_points > 1:
+            if isinstance(self.config_space, sp.MultiFidelityComplexConditionedSpace):
+                rand_configs = self.config_space.sample_configuration(
+                size=num_points, strategy=fidelity)
+            else:
+                rand_configs = self.config_space.sample_configuration(
+                    size=num_points)
+        else:
+            if isinstance(self.config_space, sp.MultiFidelityComplexConditionedSpace):
+                rand_configs = [self.config_space.sample_configuration(size=1, strategy=fidelity)]
+            else:
+                rand_configs = [self.config_space.sample_configuration(size=1)]
+        if _sorted:
+            for i in range(len(rand_configs)):
+                rand_configs[i].origin = 'Random Search (sorted)'
+            return self._sort_configs_by_acq_value(rand_configs, fidelity_strategy=fidelity)
+        else:
+            for i in range(len(rand_configs)):
+                rand_configs[i].origin = 'Random Search'
+            return [(0, rand_configs[i]) for i in range(len(rand_configs))]
+        
+
+class DualFidelityRandomSearch(AcquisitionFunctionMaximizer):
+    def _maximize(
+            self,
+            runhistory: History,
+            num_points: int,
+            _sorted: bool = True,
+            **kwargs
+    ) -> List[Tuple[float, Configuration]]:
+        if num_points > 1:
             rand_configs = self.config_space.sample_configuration(
                 size=num_points)
         else:
@@ -416,6 +460,8 @@ class RandomSearch(AcquisitionFunctionMaximizer):
             for i in range(len(rand_configs)):
                 rand_configs[i].origin = 'Random Search'
             return [(0, rand_configs[i]) for i in range(len(rand_configs))]
+        
+
 
 
 class InterleavedLocalAndRandomSearch(AcquisitionFunctionMaximizer):

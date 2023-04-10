@@ -73,7 +73,7 @@ def visualize_hiplot(
     data = []
     for i, config in enumerate(configs):
         trial = dict()
-        config_dict = config.get_dictionary().copy()
+        config_dict = config.get_dictionary()
         for param in parameters:
             trial[param] = config_dict.get(param)
         for j in range(y.shape[1]):

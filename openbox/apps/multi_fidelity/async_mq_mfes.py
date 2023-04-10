@@ -43,15 +43,15 @@ class async_mqMFES(async_mqHyperband):
                  random_state=1,
                  method_id='mqAsyncMFES',
                  restart_needed=True,
-                 max_runtime_per_trial=None,
-                 max_runtime=None,
+                 time_limit_per_trial=600,
+                 runtime_limit=None,
                  seed=1,
                  ip='',
                  port=13579,
                  authkey=b'abc'):
         super().__init__(objective_func, config_space, R, eta=eta, skip_outer_loop=skip_outer_loop,
                          random_state=random_state, method_id=method_id, restart_needed=restart_needed,
-                         max_runtime_per_trial=max_runtime_per_trial, max_runtime=max_runtime,
+                         time_limit_per_trial=time_limit_per_trial, runtime_limit=runtime_limit,
                          ip=ip, port=port, authkey=authkey)
         self.seed = seed
         self.last_n_iteration = None
