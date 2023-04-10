@@ -77,6 +77,8 @@ def time_limit(func, time, *args, **kwargs):
         args = kwargs['args']
         kwargs = kwargs['kwargs']
 
+    return no_time_limit_func(func, time, *args, **kwargs)
+
     if _platform == 'Windows':
         return no_time_limit_func(func, time, *args, **kwargs)
 

@@ -29,12 +29,14 @@ class Observation(object):
             trial_state: Optional['State'] = SUCCESS,
             elapsed_time: Optional[float] = None,
             extra_info: Optional[dict] = None,
+            inner_config: Configuration = None,
     ):
         self.config = config
         self.objectives = objectives
         self.constraints = constraints
         self.trial_state = trial_state
         self.elapsed_time = elapsed_time
+        self.inner_config = inner_config
         self.create_time = datetime.now()
         if extra_info is None:
             extra_info = dict()

@@ -248,6 +248,25 @@ class SMBO(BOBase):
                                           random_state=random_state,
                                           logger_kwargs=_logger_kwargs,
                                           **advisor_kwargs)
+        elif advisor_type == 'mf_random':
+            from openbox.core.random_advisor import MFRandomAdvisor
+            self.config_advisor = MFRandomAdvisor(config_space,
+                                          num_objectives=num_objectives,
+                                          num_constraints=num_constraints,
+                                          initial_trials=initial_runs,
+                                          init_strategy=init_strategy,
+                                          initial_configurations=initial_configurations,
+                                          optimization_strategy=sample_strategy,
+                                          surrogate_type=surrogate_type,
+                                          acq_type=acq_type,
+                                          acq_optimizer_type=acq_optimizer_type,
+                                          ref_point=ref_point,
+                                          transfer_learning_history=transfer_learning_history,
+                                          task_id=task_id,
+                                          output_dir=logging_dir,
+                                          random_state=random_state,
+                                          logger_kwargs=_logger_kwargs,
+                                          **advisor_kwargs)
         else:
             raise ValueError('Invalid advisor type!')
 
@@ -292,7 +311,7 @@ class SMBO(BOBase):
                     'Timeout: time limit for this evaluation is %.1fs' % _time_limit_per_trial)
             else:
                 # parse result
-                objectives, constraints, extra_info = parse_result(_result)
+                objectives, constraints, extra_info, inner_config = parse_result(_result, has_inner_config=True)
         except Exception as e:
             # parse result of failed trial
             if isinstance(e, TimeoutException):
@@ -304,6 +323,7 @@ class SMBO(BOBase):
             objectives = self.FAILED_PERF
             constraints = None
             extra_info = None
+            inner_config = None
 
         elapsed_time = time.time() - start_time
         
@@ -315,7 +335,7 @@ class SMBO(BOBase):
         # update observation to advisor
         observation = Observation(
             config=config, objectives=objectives, constraints=constraints,
-            trial_state=trial_state, elapsed_time=elapsed_time, extra_info=extra_info,
+            trial_state=trial_state, elapsed_time=elapsed_time, extra_info=extra_info, inner_config=inner_config,
         )
         if _time_limit_per_trial != self.time_limit_per_trial and trial_state == TIMEOUT:
             # Timeout in the last iteration.
@@ -376,7 +396,7 @@ class SMBO(BOBase):
                     'Timeout: time limit for this evaluation is %.1fs' % _time_limit_per_trial)
             else:
                 # parse result
-                objectives, constraints, extra_info = parse_result(_result)
+                objectives, constraints, extra_info, inner_config = parse_result(_result, has_inner_config=True)
         except Exception as e:
             # parse result of failed trial
             if isinstance(e, TimeoutException):
@@ -388,6 +408,7 @@ class SMBO(BOBase):
             objectives = self.FAILED_PERF
             constraints = None
             extra_info = None
+            inner_config = None
 
         elapsed_time = time.time() - start_time
         
@@ -399,7 +420,7 @@ class SMBO(BOBase):
         # update observation to advisor
         observation = Observation(
             config=config, objectives=objectives, constraints=constraints,
-            trial_state=trial_state, elapsed_time=elapsed_time, extra_info=extra_info,
+            trial_state=trial_state, elapsed_time=elapsed_time, extra_info=extra_info, inner_config=inner_config
         )
         if _time_limit_per_trial != self.time_limit_per_trial and trial_state == TIMEOUT:
             # Timeout in the last iteration.

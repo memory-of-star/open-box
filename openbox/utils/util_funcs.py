@@ -74,7 +74,7 @@ def transform_to_1d_list(x, hint='result', dtype=np.float64):
     return x.tolist()
 
 
-def parse_result(result):
+def parse_result(result, has_inner_config=False):
     """
     Parse (objectives, constraints, extra_info) from result returned by objective function.
 
@@ -121,12 +121,17 @@ def parse_result(result):
         extra_info = result.pop('extra_info', None)
         if len(result) > 0:
             logger.warning(f'Unused information in result: {result}')
+
+        inner_config = result.pop('config', None)
     else:
         # provide only objectives
         logger.warning(f'Provide result as <dict> that contains "objectives" is recommended, got {type(result)}')
         objectives = transform_to_1d_list(result, hint='objectives')
 
-    return objectives, constraints, extra_info
+    if has_inner_config:
+        return objectives, constraints, extra_info, inner_config
+    else:
+        return objectives, constraints, extra_info
 
 
 def check_random_state(seed):
