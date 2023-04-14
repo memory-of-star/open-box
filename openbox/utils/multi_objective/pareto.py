@@ -19,7 +19,7 @@ def is_non_dominated(Y: np.ndarray) -> np.ndarray:
     Y1 = np.broadcast_to(np.expand_dims(Y, -3), expanded_shape)
     Y2 = np.broadcast_to(np.expand_dims(Y, -2), expanded_shape)
     dominates = (Y1 <= Y2).all(axis=-1) & (Y1 < Y2).any(axis=-1)
-    return ~(dominates.any(axis=-1))
+    return ~(dominates.any(axis=-1)) # 这里dominate是一个n x n的bool矩阵, (i, j)元素代表第j行的点是否dominate第i行的点
 
 
 def get_pareto_front(Y: np.ndarray, return_index=False, lexsort=False):

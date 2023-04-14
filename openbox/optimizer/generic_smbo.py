@@ -436,3 +436,85 @@ class SMBO(BOBase):
 
         self.visualizer.update()
         return observation
+    
+
+    def mfes_run(self) -> History:
+        for _ in tqdm(range(self.iteration_id, self.max_iterations)):
+            if self.budget_left < 0:
+                logger.info('Time %f elapsed!' % self.runtime_limit)
+                break
+            start_time = time.time()
+            self.iterate(budget_left=self.budget_left)
+            runtime = time.time() - start_time
+            self.budget_left -= runtime
+            ####### added feature by CYQ
+            if self.early_stop:
+                return self.get_history()
+            #######
+        return self.get_history()
+
+    def mfes_iterate(self, budget_left=None) -> Observation:
+        # get configuration suggestion from advisor
+        config = self.config_advisor.get_suggestion()
+
+        trial_state = SUCCESS
+        _budget_left = int(1e10) if budget_left is None else budget_left
+        _time_limit_per_trial = math.ceil(min(self.time_limit_per_trial, _budget_left))
+
+        if config in self.config_advisor.history.configurations:
+            logger.warning('Evaluating duplicated configuration: %s' % config)
+
+        start_time = time.time()
+        try:
+            # evaluate configuration on objective_function within time_limit_per_trial
+            args, kwargs = (config,), dict()
+            timeout_status, _result = time_limit(self.objective_function,
+                                                 _time_limit_per_trial,
+                                                 args=args, kwargs=kwargs)
+            if timeout_status:
+                raise TimeoutException(
+                    'Timeout: time limit for this evaluation is %.1fs' % _time_limit_per_trial)
+            else:
+                # parse result
+                objectives, constraints, extra_info, inner_config = parse_result(_result, has_inner_config=True)
+        except Exception as e:
+            # parse result of failed trial
+            if isinstance(e, TimeoutException):
+                logger.warning(str(e))
+                trial_state = TIMEOUT
+            else:  # todo: log exception if objective function raises error
+                logger.warning(f'Exception when calling objective function: {e}\nconfig: {config}')
+                trial_state = FAILED
+            objectives = self.FAILED_PERF
+            constraints = None
+            extra_info = None
+            inner_config = None
+
+        elapsed_time = time.time() - start_time
+        
+        ######## added feature by CYQ
+        if self.num_objectives == 1 and objectives[0] < self.early_stop_threshold:
+            self.early_stop = True
+        ########
+        
+        # update observation to advisor
+        observation = Observation(
+            config=config, objectives=objectives, constraints=constraints,
+            trial_state=trial_state, elapsed_time=elapsed_time, extra_info=extra_info, inner_config=inner_config,
+        )
+        if _time_limit_per_trial != self.time_limit_per_trial and trial_state == TIMEOUT:
+            # Timeout in the last iteration.
+            pass
+        else:
+            self.config_advisor.update_observation(observation)
+
+        self.iteration_id += 1
+        # Logging
+        if self.num_constraints > 0:
+            logger.info('Iter %d, objectives: %s. constraints: %s.'
+                             % (self.iteration_id, objectives, constraints))
+        else:
+            logger.info('Iter %d, objectives: %s.' % (self.iteration_id, objectives))
+
+        self.visualizer.update()
+        return observation
