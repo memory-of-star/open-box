@@ -142,3 +142,10 @@ def build_surrogate(func_str='gp', config_space=None, rng=None, transfer_learnin
             raise ValueError('Invalid string %s for tlbo surrogate!' % func_str)
     else:
         raise ValueError('Invalid string %s for surrogate!' % func_str)
+    
+
+def build_fidelity_surrogates(func_str='gp', config_space=None, rng=None, transfer_learning_history=None, fidelity_num=2):
+    fidelity_surrogates = []
+    for i in range(fidelity_num):
+        fidelity_surrogates.append(build_surrogate(func_str=func_str, config_space=config_space, rng=rng, transfer_learning_history=transfer_learning_history))
+    return fidelity_surrogates

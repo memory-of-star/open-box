@@ -111,6 +111,7 @@ class SMBO(BOBase):
             self,
             objective_function: callable,
             config_space,
+            fidelity_objective_functions: List[callable] = [None],
             num_objectives=1,
             num_constraints=0,
             sample_strategy: str = 'bo',
@@ -141,6 +142,10 @@ class SMBO(BOBase):
         ########### added feature by CYQ
         self.early_stop = False
         self.early_stop_threshold = 0
+
+        self.current_fidelity = 0
+        self.fidelity_objective_functions = fidelity_objective_functions
+        self.fidelity_num = len(fidelity_objective_functions)
         ################################
 
         self.num_objectives = num_objectives
@@ -248,6 +253,26 @@ class SMBO(BOBase):
                                           random_state=random_state,
                                           logger_kwargs=_logger_kwargs,
                                           **advisor_kwargs)
+        elif advisor_type == 'mfes_advisor':
+            from openbox.core.mfes_advisor import MFES_Advisor
+            self.config_advisor = MFES_Advisor(config_space,
+                                          num_objectives=num_objectives,
+                                          num_constraints=num_constraints,
+                                          initial_trials=initial_runs,
+                                          init_strategy=init_strategy,
+                                          initial_configurations=initial_configurations,
+                                          optimization_strategy=sample_strategy,
+                                          surrogate_type=surrogate_type,
+                                          acq_type=acq_type,
+                                          acq_optimizer_type=acq_optimizer_type,
+                                          ref_point=ref_point,
+                                          transfer_learning_history=transfer_learning_history,
+                                          task_id=task_id,
+                                          output_dir=logging_dir,
+                                          random_state=random_state,
+                                          logger_kwargs=_logger_kwargs,
+                                          **advisor_kwargs)
+            self.config_advisor.fidelity_num = self.fidelity_num
         elif advisor_type == 'mf_random':
             from openbox.core.random_advisor import MFRandomAdvisor
             self.config_advisor = MFRandomAdvisor(config_space,
@@ -439,21 +464,21 @@ class SMBO(BOBase):
     
 
     def mfes_run(self) -> History:
-        for _ in tqdm(range(self.iteration_id, self.max_iterations)):
+        for ite in tqdm(range(self.max_iterations)):
             if self.budget_left < 0:
                 logger.info('Time %f elapsed!' % self.runtime_limit)
                 break
             start_time = time.time()
-            self.iterate(budget_left=self.budget_left)
+            self.mfes_iterate(iteration=ite, budget_left=self.budget_left)
             runtime = time.time() - start_time
             self.budget_left -= runtime
             ####### added feature by CYQ
             if self.early_stop:
-                return self.get_history()
+                return self.config_advisor.get_history()
             #######
-        return self.get_history()
+        return self.config_advisor.get_history()
 
-    def mfes_iterate(self, budget_left=None) -> Observation:
+    def mfes_iterate(self, iteration = None, budget_left=None) -> Observation:
         # get configuration suggestion from advisor
         config = self.config_advisor.get_suggestion()
 
@@ -468,9 +493,21 @@ class SMBO(BOBase):
         try:
             # evaluate configuration on objective_function within time_limit_per_trial
             args, kwargs = (config,), dict()
-            timeout_status, _result = time_limit(self.objective_function,
-                                                 _time_limit_per_trial,
-                                                 args=args, kwargs=kwargs)
+
+            # here we decide the strategy of evaluation
+            num_config_successful = self.config_advisor.history.get_success_count()
+            if num_config_successful <= 50:
+                self.current_fidelity = 1
+                timeout_status, _result = time_limit(self.fidelity_objective_functions[1],
+                                                    _time_limit_per_trial,
+                                                    args=args, kwargs=kwargs)
+            else:
+                self.current_fidelity = 0
+                timeout_status, _result = time_limit(self.fidelity_objective_functions[0],
+                                                    _time_limit_per_trial,
+                                                    args=args, kwargs=kwargs)
+
+
             if timeout_status:
                 raise TimeoutException(
                     'Timeout: time limit for this evaluation is %.1fs' % _time_limit_per_trial)
@@ -506,7 +543,7 @@ class SMBO(BOBase):
             # Timeout in the last iteration.
             pass
         else:
-            self.config_advisor.update_observation(observation)
+            self.config_advisor.update_observation(observation, current_fidelity=self.current_fidelity)
 
         self.iteration_id += 1
         # Logging
