@@ -465,22 +465,27 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
                 #                                  eta=incumbent_value,
                 #                                  num_data=num_config_evaluated)
                 for i in range(self.fidelity_num):
-                    incumbent_value = self.fidelity_histories[i].get_incumbent_value()
-                    self.fidelity_acquisition_functions[i].update(model=self.surrogate_fidelity_models[i],
-                                                     constraint_models=self.fidelity_constraint_models[i],
-                                                     eta=incumbent_value,
-                                                     num_data=fidelity_num_config_evaluated[i])
+                    if fidelity_num_config_successful[i] > 0:
+                        incumbent_value = self.fidelity_histories[i].get_incumbent_value()
+                        self.fidelity_acquisition_functions[i].update(model=self.surrogate_fidelity_models[i],
+                                                        constraint_models=self.fidelity_constraint_models[i],
+                                                        eta=incumbent_value,
+                                                        num_data=fidelity_num_config_evaluated[i])
             else:  # multi-objectives
                 # mo_incumbent_values = history.get_mo_incumbent_values()
                 fidelity_mo_incumbent_values = []
                 for i in range(self.fidelity_num):
-                    fidelity_mo_incumbent_values.append(self.fidelity_histories[i].get_mo_incumbent_values())
+                    if fidelity_num_config_successful[i] > 0:
+                        fidelity_mo_incumbent_values.append(self.fidelity_histories[i].get_mo_incumbent_values())
+                    else:
+                        fidelity_mo_incumbent_values.append(None)
                 if self.acq_type == 'parego':
                     for i in range(self.fidelity_num):
-                        self.fidelity_acquisition_functions[i].update(model=self.surrogate_fidelity_models[i],
-                                                        constraint_models=self.fidelity_constraint_models[i],
-                                                        eta=scalarized_obj(np.atleast_2d(fidelity_mo_incumbent_values[i])),
-                                                        num_data=fidelity_num_config_evaluated[i])
+                        if fidelity_num_config_successful[i] > 0:
+                            self.fidelity_acquisition_functions[i].update(model=self.surrogate_fidelity_models[i],
+                                                            constraint_models=self.fidelity_constraint_models[i],
+                                                            eta=scalarized_obj(np.atleast_2d(fidelity_mo_incumbent_values[i])),
+                                                            num_data=fidelity_num_config_evaluated[i])
                 elif self.acq_type.startswith('ehvi'):
                     for i in range(self.fidelity_num):
                         if fidelity_num_config_successful[i] > 0:
