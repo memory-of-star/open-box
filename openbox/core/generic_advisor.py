@@ -39,6 +39,7 @@ class Advisor(object, metaclass=abc.ABCMeta):
             task_id='OpenBox',
             random_state=None,
             logger_kwargs: dict = None,
+            num_acq_optimizer_points: int = 20,
             **kwargs,
     ):
 
@@ -49,6 +50,8 @@ class Advisor(object, metaclass=abc.ABCMeta):
         self.output_dir = output_dir
         self.task_id = task_id
         self.rng = check_random_state(random_state)
+
+        self.num_acq_optimizer_points = num_acq_optimizer_points
 
         _logger_kwargs = {'name': task_id, 'logdir': output_dir}
         _logger_kwargs.update(logger_kwargs or {})
@@ -423,7 +426,7 @@ class Advisor(object, metaclass=abc.ABCMeta):
 
             # optimize acquisition function
             challengers = self.optimizer.maximize(runhistory=history,
-                                                  num_points=50000)
+                                                  num_points=self.num_acq_optimizer_points)
             if return_list:
                 # Caution: return_list doesn't contain random configs sampled according to rand_prob
                 return challengers.challengers

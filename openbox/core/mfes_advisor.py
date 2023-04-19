@@ -39,6 +39,7 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
             task_id='OpenBox',
             random_state=None,
             logger_kwargs: dict = None,
+            num_acq_optimizer_points: int = 20,
             **kwargs,
     ):
 
@@ -49,6 +50,8 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
         self.output_dir = output_dir
         self.task_id = task_id
         self.rng = check_random_state(random_state)
+
+        self.num_acq_optimizer_points = num_acq_optimizer_points
 
         self.fidelity_num = 2
 
@@ -508,10 +511,10 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
             # optimize acquisition function
             if num_config_successful <= 70: # temporarily hardcode 70
                 challengers = self.fidelity_optimizers[1].maximize(runhistory=self.fidelity_histories[1],
-                                                    num_points=20000)
+                                                    num_points=self.num_acq_optimizer_points)
             else:
                 challengers = self.fidelity_optimizers[0].maximize(runhistory=self.fidelity_histories[0],
-                                                    num_points=20000)
+                                                    num_points=self.num_acq_optimizer_points)
                 
             if return_list:
                 # Caution: return_list doesn't contain random configs sampled according to rand_prob

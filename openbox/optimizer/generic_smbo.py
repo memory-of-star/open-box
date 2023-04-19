@@ -134,6 +134,7 @@ class SMBO(BOBase):
             random_state=None,
             logger_kwargs: dict = None,
             advisor_kwargs: dict = None,
+            num_acq_optimizer_points: int = 20,
     ):
 
         if task_id is None:
@@ -178,6 +179,7 @@ class SMBO(BOBase):
                                           output_dir=logging_dir,
                                           random_state=random_state,
                                           logger_kwargs=_logger_kwargs,
+                                          num_acq_optimizer_points=num_acq_optimizer_points,
                                           **advisor_kwargs)
         elif advisor_type == 'mcadvisor':
             from openbox.core.mc_advisor import MCAdvisor
@@ -271,6 +273,7 @@ class SMBO(BOBase):
                                           output_dir=logging_dir,
                                           random_state=random_state,
                                           logger_kwargs=_logger_kwargs,
+                                          num_acq_optimizer_points=num_acq_optimizer_points,
                                           **advisor_kwargs)
             self.config_advisor.fidelity_num = self.fidelity_num
         elif advisor_type == 'mf_random':
@@ -305,11 +308,8 @@ class SMBO(BOBase):
             self.iterate(budget_left=self.budget_left)
             runtime = time.time() - start_time
             self.budget_left -= runtime
-            ####### added feature by CYQ
-            # if self.early_stop:
-            #     return self.get_history()
-            #######
-        return self.get_history()
+            
+        return self.get_history()           
 
     def iterate(self, budget_left=None) -> Observation:
         # get configuration suggestion from advisor
@@ -349,11 +349,6 @@ class SMBO(BOBase):
             inner_config = None
 
         elapsed_time = time.time() - start_time
-        
-        ######## added feature by CYQ
-        # if self.num_objectives == 1 and objectives[0] < self.early_stop_threshold:
-        #     self.early_stop = True
-        ########
         
         # update observation to advisor
         observation = Observation(
