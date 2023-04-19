@@ -306,8 +306,8 @@ class SMBO(BOBase):
             runtime = time.time() - start_time
             self.budget_left -= runtime
             ####### added feature by CYQ
-            if self.early_stop:
-                return self.get_history()
+            # if self.early_stop:
+            #     return self.get_history()
             #######
         return self.get_history()
 
@@ -351,8 +351,8 @@ class SMBO(BOBase):
         elapsed_time = time.time() - start_time
         
         ######## added feature by CYQ
-        if self.num_objectives == 1 and objectives[0] < self.early_stop_threshold:
-            self.early_stop = True
+        # if self.num_objectives == 1 and objectives[0] < self.early_stop_threshold:
+        #     self.early_stop = True
         ########
         
         # update observation to advisor
@@ -390,9 +390,9 @@ class SMBO(BOBase):
             runtime = time.time() - start_time
             self.budget_left -= runtime
             ####### added feature by CYQ
-            if self.early_stop:
-                return self.config_advisor.fidelity_history
-            #######
+            # if self.early_stop:
+            #     return self.config_advisor.fidelity_history
+            # #######
         return self.config_advisor.fidelity_history
 
 
@@ -436,8 +436,8 @@ class SMBO(BOBase):
         elapsed_time = time.time() - start_time
         
         ######## added feature by CYQ
-        if self.num_objectives == 1 and objectives[0] < self.early_stop_threshold:
-            self.early_stop = True
+        # if self.num_objectives == 1 and objectives[0] < self.early_stop_threshold:
+        #     self.early_stop = True
         ########
         
         # update observation to advisor
@@ -472,10 +472,10 @@ class SMBO(BOBase):
             self.mfes_iterate(iteration=ite, budget_left=self.budget_left)
             runtime = time.time() - start_time
             self.budget_left -= runtime
-            ####### added feature by CYQ
-            if self.early_stop:
-                return self.config_advisor.get_history()
-            #######
+            # ####### added feature by CYQ
+            # if self.early_stop:
+            #     return self.config_advisor.get_history()
+            # #######
         return self.config_advisor.get_history()
 
     def mfes_iterate(self, iteration = None, budget_left=None) -> Observation:
@@ -530,8 +530,8 @@ class SMBO(BOBase):
         elapsed_time = time.time() - start_time
         
         ######## added feature by CYQ
-        if self.num_objectives == 1 and objectives[0] < self.early_stop_threshold:
-            self.early_stop = True
+        # if self.num_objectives == 1 and objectives[0] < self.early_stop_threshold:
+        #     self.early_stop = True
         ########
         
         # update observation to advisor
