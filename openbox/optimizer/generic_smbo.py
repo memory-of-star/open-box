@@ -296,6 +296,8 @@ class SMBO(BOBase):
         else:
             raise ValueError('Invalid advisor type!')
 
+        self.config_advisor.current_fidelity = len(fidelity_objective_functions) - 1
+
         self.visualizer = build_visualizer(visualization, self, auto_open_html=auto_open_html)
         self.visualizer.setup()
 
@@ -490,15 +492,8 @@ class SMBO(BOBase):
             args, kwargs = (config,), dict()
 
             # here we decide the strategy of evaluation
-            num_config_successful = self.config_advisor.history.get_success_count()
-            if num_config_successful <= 50:
-                self.current_fidelity = 1
-                timeout_status, _result = time_limit(self.fidelity_objective_functions[1],
-                                                    _time_limit_per_trial,
-                                                    args=args, kwargs=kwargs)
-            else:
-                self.current_fidelity = 0
-                timeout_status, _result = time_limit(self.fidelity_objective_functions[0],
+            
+            timeout_status, _result = time_limit(self.fidelity_objective_functions[self.config_advisor.current_fidelity],
                                                     _time_limit_per_trial,
                                                     args=args, kwargs=kwargs)
 
@@ -538,7 +533,14 @@ class SMBO(BOBase):
             # Timeout in the last iteration.
             pass
         else:
-            self.config_advisor.update_observation(observation, current_fidelity=self.current_fidelity)
+            self.config_advisor.update_observation(observation)
+
+        num_config_successful = self.config_advisor.history.get_success_count()
+        if num_config_successful < 100:
+            self.config_advisor.current_fidelity = 1
+        else:
+            self.config_advisor.current_fidelity = 0
+
 
         self.iteration_id += 1
         # Logging

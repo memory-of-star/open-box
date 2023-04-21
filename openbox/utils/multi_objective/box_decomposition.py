@@ -289,7 +289,7 @@ class NondominatedPartitioning(object):
             return tuple(np.take(arr, indices=range(i*chunk_size, (i+1)*chunk_size), axis=axis) for i in range(real_chunks))
 
         indexers = chunk(cell_bounds_idxr, self.num_objectives, axis=-1)
-        cell_bounds_values = aug_pareto_Y[indexers].reshape(2, -1, self.num_objectives)
+        cell_bounds_values = aug_pareto_Y[indexers].reshape(2, -1, self.num_objectives) # 这句有点东西的， 需要理解一下np的索引机制，indexers是多个array的tuple，先用一个array去选择，再用之后的array去做选择
         return cell_bounds_values
 
     def compute_hypervolume(self, ref_point: np.ndarray) -> float:
@@ -312,11 +312,11 @@ class NondominatedPartitioning(object):
         Returns:
             The dominated hypervolume.
         """
-        if (self._pareto_Y <= ref_point).any():
-            raise ValueError(
-                "The reference point must be smaller than all pareto_Y values."
-            )
-        ideal_point = self._pareto_Y.min(axis=0, keepdims=True).values
+        # if (self._pareto_Y <= ref_point).any():
+        #     raise ValueError(
+        #         "The reference point must be smaller than all pareto_Y values."
+        #     )
+        ideal_point = self._pareto_Y.min(axis=0, keepdims=True)#.values
         ref_point = np.expand_dims(ref_point, 0)
         aug_pareto_Y = np.concatenate([ideal_point, self._pareto_Y, ref_point], axis=0)
         cell_bounds_values = self._get_hypercell_bounds(aug_pareto_Y=aug_pareto_Y)

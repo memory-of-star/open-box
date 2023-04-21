@@ -54,6 +54,7 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
         self.num_acq_optimizer_points = num_acq_optimizer_points
 
         self.fidelity_num = 2
+        self.current_fidelity = 1
 
         _logger_kwargs = {'name': task_id, 'logdir': output_dir}
         _logger_kwargs.update(logger_kwargs or {})
@@ -401,9 +402,14 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
             fidelity_num_config_evaluated.append(len(self.fidelity_histories[i]))
             fidelity_num_config_successful.append(self.fidelity_histories[i].get_success_count())
 
-        if num_config_evaluated < self.init_num:
-            res = self.initial_configurations[num_config_evaluated]
+        # if num_config_evaluated < self.init_num:
+        #     res = self.initial_configurations[num_config_evaluated]
+        #     return [res] if return_list else res
+        
+        if fidelity_num_config_successful[self.current_fidelity] < self.init_num: # 每一个fidelity都用init_num个随机去做初始化
+            res = self.sample_random_configs(1, history)[0]
             return [res] if return_list else res
+
         if self.optimization_strategy == 'random':
             res = self.sample_random_configs(1, history)[0]
             return [res] if return_list else res
@@ -450,7 +456,7 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
                         self.surrogate_fidelity_models[i].train(X[i], scalarized_obj(Y[i]))
             else:  # multi-objectives
                 for k in range(self.fidelity_num):
-                    if fidelity_num_config_successful[k] > 0:
+                    if fidelity_num_config_successful[k] > 0 and k == self.current_fidelity:
                         for i in range(self.num_objectives):
                             self.surrogate_fidelity_models[k][i].train(X[k], Y[k][:, i])
 
@@ -509,10 +515,17 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
                                                             X=X[i], Y=Y[i])
 
             # optimize acquisition function
-            if num_config_successful <= 70: # temporarily hardcode 70
+            # print('num_config_successful:', num_config_successful, "      current_fidelity:", self.current_fidelity)
+            
+            if num_config_successful < 100: # temporarily hardcode
                 challengers = self.fidelity_optimizers[1].maximize(runhistory=self.fidelity_histories[1],
                                                     num_points=self.num_acq_optimizer_points)
+            elif num_config_successful < 140: # temporarily hardcode
+                self.fidelity_optimizers[0].acquisition_function.model = self.surrogate_fidelity_models[1]
+                challengers = self.fidelity_optimizers[0].maximize(runhistory=self.fidelity_histories[1],
+                                                    num_points=self.num_acq_optimizer_points)
             else:
+                self.fidelity_optimizers[0].acquisition_function.model = self.surrogate_fidelity_models[0]
                 challengers = self.fidelity_optimizers[0].maximize(runhistory=self.fidelity_histories[0],
                                                     num_points=self.num_acq_optimizer_points)
                 
@@ -529,7 +542,7 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
         else:
             raise ValueError('Unknown optimization strategy: %s.' % self.optimization_strategy)
 
-    def update_observation(self, observation: Observation, current_fidelity = None):
+    def update_observation(self, observation: Observation):
         """
         Update the current observations.
         Parameters
@@ -540,8 +553,7 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
         -------
 
         """
-        if current_fidelity != None:
-            self.fidelity_histories[current_fidelity].update_observation(observation)
+        self.fidelity_histories[self.current_fidelity].update_observation(observation)
         return self.history.update_observation(observation)
 
     def sample_random_configs(self, num_configs=1, history=None, excluded_configs=None):
