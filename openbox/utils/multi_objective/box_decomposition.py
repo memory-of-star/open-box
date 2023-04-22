@@ -20,6 +20,8 @@ import numpy as np
 from openbox.utils.multi_objective.pareto import is_non_dominated
 
 
+# 在NondominatedPartitioning类中，我们将ref_point变成类的一个属性，并且只认为dominate住ref_point的点才可能在pareto边界内
+
 class NondominatedPartitioning(object):
     r"""A class for partitioning the non-dominated space into hyper-cells.
 
@@ -44,6 +46,7 @@ class NondominatedPartitioning(object):
         Y: Optional[np.ndarray] = None,
         alpha: float = 0.0,
         eps: Optional[float] = None,
+        ref_point = None
     ) -> None:
         """Initialize NondominatedPartitioning.
 
@@ -57,6 +60,7 @@ class NondominatedPartitioning(object):
         self.alpha = alpha
         self.num_objectives = num_objectives
         self._eps = eps
+        self.ref_point = ref_point
         if Y is not None:
             self.update(Y=Y)
 
@@ -84,6 +88,15 @@ class NondominatedPartitioning(object):
         r"""Update the non-dominated front."""
         non_dominated_mask = is_non_dominated(self.Y)
         pf = self.Y[non_dominated_mask]
+
+        
+        if  isinstance(self.ref_point, np.ndarray):
+            non_ref_mask = []
+            for i in range(pf.shape[0]):
+                if (pf[i] < self.ref_point).all():
+                    non_ref_mask.append(i)
+            pf = pf[non_ref_mask]  # 只把dominate住ref_point的点加入到pareto边界里
+
         # sort by first objective
         new_pareto_Y = pf[np.argsort(pf[:, 0])]
         if not hasattr(self, "_pareto_Y") or not np.equal(
@@ -325,3 +338,6 @@ class NondominatedPartitioning(object):
             (cell_bounds_values[1] - cell_bounds_values[0]).prod(axis=-1).sum()
         )
         return total_volume - non_dom_volume
+
+
+

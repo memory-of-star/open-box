@@ -498,7 +498,7 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
                 elif self.acq_type.startswith('ehvi'):
                     for i in range(self.fidelity_num):
                         if fidelity_num_config_successful[i] > 0:
-                            partitioning = NondominatedPartitioning(self.num_objectives, Y[i])
+                            partitioning = NondominatedPartitioning(self.num_objectives, Y[i], ref_point=self.ref_point)
                             cell_bounds = partitioning.get_hypercell_bounds(ref_point=self.ref_point)
                             self.fidelity_acquisition_functions[i].update(model=self.surrogate_fidelity_models[i],
                                                             constraint_models=self.fidelity_constraint_models[i],
@@ -517,10 +517,10 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
             # optimize acquisition function
             # print('num_config_successful:', num_config_successful, "      current_fidelity:", self.current_fidelity)
             
-            if num_config_successful < 100: # temporarily hardcode
+            if num_config_successful < 50: # temporarily hardcode
                 challengers = self.fidelity_optimizers[1].maximize(runhistory=self.fidelity_histories[1],
                                                     num_points=self.num_acq_optimizer_points)
-            elif num_config_successful < 140: # temporarily hardcode
+            elif num_config_successful < 70: # temporarily hardcode
                 self.fidelity_optimizers[0].acquisition_function.model = self.surrogate_fidelity_models[1]
                 challengers = self.fidelity_optimizers[0].maximize(runhistory=self.fidelity_histories[1],
                                                     num_points=self.num_acq_optimizer_points)

@@ -410,7 +410,7 @@ class Advisor(object, metaclass=abc.ABCMeta):
                                                      eta=scalarized_obj(np.atleast_2d(mo_incumbent_values)),
                                                      num_data=num_config_evaluated)
                 elif self.acq_type.startswith('ehvi'):
-                    partitioning = NondominatedPartitioning(self.num_objectives, Y)
+                    partitioning = NondominatedPartitioning(self.num_objectives, Y, ref_point=self.ref_point)
                     cell_bounds = partitioning.get_hypercell_bounds(ref_point=self.ref_point)
                     self.acquisition_function.update(model=self.surrogate_model,
                                                      constraint_models=self.constraint_models,
