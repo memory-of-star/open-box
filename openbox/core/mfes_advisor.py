@@ -517,10 +517,10 @@ class MFES_Advisor(object, metaclass=abc.ABCMeta):
             # optimize acquisition function
             # print('num_config_successful:', num_config_successful, "      current_fidelity:", self.current_fidelity)
             
-            if num_config_successful < 50: # temporarily hardcode
+            if num_config_successful < 100: # temporarily hardcode
                 challengers = self.fidelity_optimizers[1].maximize(runhistory=self.fidelity_histories[1],
                                                     num_points=self.num_acq_optimizer_points)
-            elif num_config_successful < 70: # temporarily hardcode
+            elif num_config_successful < 150: # temporarily hardcode
                 self.fidelity_optimizers[0].acquisition_function.model = self.surrogate_fidelity_models[1]
                 challengers = self.fidelity_optimizers[0].maximize(runhistory=self.fidelity_histories[1],
                                                     num_points=self.num_acq_optimizer_points)

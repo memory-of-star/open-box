@@ -536,7 +536,7 @@ class SMBO(BOBase):
             self.config_advisor.update_observation(observation)
 
         num_config_successful = self.config_advisor.history.get_success_count()
-        if num_config_successful < 50:
+        if num_config_successful < 100:
             self.config_advisor.current_fidelity = 1
         else:
             self.config_advisor.current_fidelity = 0
